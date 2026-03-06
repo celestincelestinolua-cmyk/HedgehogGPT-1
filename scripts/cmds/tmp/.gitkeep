@@ -1,0 +1,95 @@
+const axios = require("axios");
+
+const memory = {};
+
+function normalizeText(text) {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+module.exports = {
+  config: {
+    name: "neo",
+    version: "12.1",
+    author: "Celestin Olua",
+    role: 0,
+    shortDescription: "Neo AI texte direct avec préfixe obligatoire",
+    longDescription: "Neo répond uniquement si message commence par 'neo', sans salut initial, avec mémoire et images",
+    category: "ai",
+    guide: "{pn} imagine [prompt] | {pn} clear"
+  },
+
+  onStart: async function({ message }) {
+    return; // obligatoire pour GoatBot
+  },
+
+  onChat: async function({ event, message, usersData }) {
+    const uid = event.senderID;
+    const userMessage = event.body?.trim();
+    if (!userMessage) return;
+
+    const text = normalizeText(userMessage);
+
+    if (!text.startsWith("neo")) return; // répondre uniquement si "neo" devant
+
+    const args = userMessage.split(" ").slice(1);
+    const command = args[0]?.toLowerCase();
+
+    // Clear mémoire
+    if (command === "clear") {
+      await usersData.set(uid, { neoMemory: "" });
+      memory[uid] = "";
+      return message.reply("🧹 Mémoire Neo supprimée !");
+    }
+
+    // Génération image
+    if (command === "imagine") {
+      const prompt = args.slice(1).join(" ");
+      if (!prompt) return message.reply("❌ Exemple : neo imagine un chat futuriste 😺🤖");
+
+      try {
+        const res = await axios.get(
+          `https://arychauhann.onrender.com/api/gemini-proxy2?prompt=${encodeURIComponent("Génère une image : " + prompt)}`
+        );
+        const imgUrl = res.data.image || res.data.url || "Pas d'image générée.";
+        return message.reply(`🖼 𝗡𝗘𝗢 IMAGINE\n━━━━━━━━━━━━━━\n${imgUrl}`);
+      } catch (err) {
+        return message.reply("❌ Erreur lors de la génération de l'image 😢");
+      }
+    }
+
+    // Conversation directe sans “Salut”
+    const memoryText = memory[uid] || "";
+    const userPrompt = args.join(" ");
+
+    const prompt = `
+Tu es une intelligence artificielle appelée Néo 🤖.
+Réponds directement et de façon naturelle au message de l'utilisateur, sans préambule comme "Salut".
+Tu parles avec emojis, tu es amical et drôle.
+Ton créateur est Célestin Olua 👑.
+Ta mémoire précédente : ${memoryText}
+Utilisateur : ${userPrompt}
+Réponds uniquement en texte avec emojis.
+`;
+
+    try {
+      const res = await axios.get(
+        `https://arychauhann.onrender.com/api/gemini-proxy2?prompt=${encodeURIComponent(prompt)}`
+      );
+
+      const reply =
+        res.data.reply ||
+        res.data.result ||
+        res.data.response ||
+        res.data.message ||
+        "Hmm… je réfléchis 🤔";
+
+      memory[uid] = reply;
+      await usersData.set(uid, { neoMemory: reply });
+
+      return message.reply(`🤖 𝗡𝗘𝗢\n━━━━━━━━━━━━━━\n${reply}`);
+    } catch (err) {
+      console.error(err);
+      return message.reply("❌ Oups… erreur avec mon cerveau AI 🧠.");
+    }
+  }
+};
